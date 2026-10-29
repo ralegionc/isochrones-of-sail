@@ -1,0 +1,9 @@
+legs: 830 -> 808 after distance/sinuosity -> 756 after dedup and wind coverage
+loading winds
+50525 ship-days with real winds
+calibration factor 0.990
+K4 {'n_obs': 48364, 'n_legs': 756, 'median_err_real': 34.45813939144287, 'median_err_placebo': 47.69020700778175, 'median_leg_diff': -6.711777922605048, 'frac_legs_real_better': 0.8716931216931217, 'wilcoxon_p': 4.602337724700855e-99, 'circ_mean_offset_deg': -6.933932930164209, 'passed': True}
+K5 {'n_legs': 756, 'median_rho_real': 0.44740348570717925, 'median_rho_placebo': 0.30520949951711795, 'median_leg_diff': 0.10591126840495863, 'frac_legs_real_better': 0.8306878306878307, 'wilcoxon_p': 1.2683539634946654e-81, 'pooled_rho_real': 0.4158743905853211, 'passed': True}
+K6 {'close_hauled_8ms': 3.4112428862562547, 'broad_reach_8ms': 6.643416989968365, 'reach_8ms': 6.708076414596598, 'reach_3ms': 4.742943981281515, 'passed': True}
+climatology
+K3 {'n_ok': 7, 'passed': False} [(1, -20.2, -54.5), (2, -19.5, -54.5), (3, -14.2, -53.8), (4, -13.8, -51.0), (5, -14.0, -50.5), (6, -14.8, -50.2), (7, -15.2, -50.0), (8, -15.0, -50.2), (9, -15.1, -51.5), (10, -14.8, -51.5), (11, -21.8, -51.8), (12, -21.7, -53.0)]

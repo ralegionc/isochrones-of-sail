@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Isochrones of Sail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,500;0,700;1,400;1,500&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a full-bleed night chart of the voyages; one floating panel picks a voyage and races its ghosts. */
+:root {
+  --ink: #0b0e13;          /* the night sea */
+  --land: #151b25;
+  --coast: #2a3446;
+  --panel: rgba(13, 17, 24, 0.92);
+  --rule: #232b37;
+  --text: #ebe6da;
+  --muted: #8f96a1;
+  --act: #f2a541;          /* the logged track */
+  --opt: #f4f1e8;          /* hindsight optimum */
+  --clim: #5ec8e5;         /* best route from wind charts alone */
+  --display: "Spectral", Georgia, "Times New Roman", serif;
+  --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--ink); color: var(--text); font: 14px/1.5 var(--body); overflow: hidden; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#chart { cursor: crosshair; }
+
+.panel {
+  position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px; width: min(370px, calc(100% - 32px));
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 18px 18px 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; backdrop-filter: blur(6px); max-height: calc(100% - 32px); overflow-y: auto; overflow-x: hidden;
+  box-sizing: border-box;
+}
+h1 { font: 700 30px/1 var(--display); margin: 0; letter-spacing: 0.01em; }
+.dek { margin: 0; color: var(--muted); font-size: 13px; text-wrap: pretty; }
+.finding { margin: 0; font-size: 13.5px; text-wrap: pretty; }
+.finding b { font: 500 13px var(--mono); color: var(--act); }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button, .btn {
+  font: 500 12.5px var(--body); color: var(--muted); background: transparent; border: 1px solid var(--rule);
+  border-radius: 999px; padding: 5px 11px; cursor: pointer;
+}
+.tabs button[aria-pressed="true"] { color: var(--ink); background: var(--text); border-color: var(--text); }
+.btn:hover, .tabs button:hover { color: var(--text); border-color: var(--muted); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.row { display: flex; gap: 8px; align-items: center; }
+select {
+  flex: 1; min-width: 0; font: 13px var(--body); color: var(--text); background: #10151d; border: 1px solid var(--rule);
+  border-radius: 4px; padding: 6px 8px;
+}
+.voyage { display: grid; gap: 2px; }
+.voyage .name { font: 500 italic 19px/1.2 var(--display); }
+.voyage .meta { color: var(--muted); font-size: 12.5px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.stat { border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; }
+.stat .v { font: 500 17px var(--mono); }
+.stat .k { font-size: 11px; color: var(--muted); line-height: 1.25; }
+.stat.act .v { color: var(--act); } .stat.opt .v { color: var(--opt); } .stat.clim .v { color: var(--clim); }
+.race { display: grid; gap: 6px; }
+.race .row span { font: 500 12.5px var(--mono); color: var(--muted); min-width: 64px; text-align: right; }
+input[type=range] { flex: 1; accent-color: var(--act); }
+.legend { display: grid; gap: 4px; font-size: 12.5px; }
+.legend span { display: flex; align-items: center; gap: 8px; }
+.legend i { width: 22px; height: 3px; border-radius: 2px; flex: none; }
+.legend i.dash { background: repeating-linear-gradient(90deg, var(--clim) 0 6px, transparent 6px 10px) !important; }
+.note { margin: 0; color: var(--muted); font-size: 12px; text-wrap: pretty; }
+.credits { margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+.toggle { display: none; }
+@media (max-width: 640px) {
+  .panel { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; width: auto; max-height: 58%; padding: 14px; gap: 10px; }
+  h1 { font-size: 24px; }
+  .panel.min > :not(.head) { display: none; }
+  .toggle { display: inline-block; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+}
+</style>
+</head>
+<body>
+<canvas id="chart" aria-label="Map of logged voyage tracks and their fastest possible routes"></canvas>
+<div class="panel" id="panel">
+  <div class="head"><h1>Isochrones of Sail</h1><button class="btn toggle" id="toggle" aria-expanded="true">Hide</button></div>
+  <p class="dek">Dutch East Indiamen, 1836&ndash;1855, sailed again through the winds of their own days. Each voyage races two ghosts: the fastest route in hindsight, and the best route a captain could have planned from perfect wind charts.</p>
+  <p class="finding" id="finding">Loading&hellip;</p>
+  <div class="tabs" role="group" aria-label="Voyage type" id="tabs">
+    <button data-r="outbound" aria-pressed="true">Outbound</button>
+    <button data-r="homeward" aria-pressed="false">Homeward</button>
+    <button data-r="other" aria-pressed="false">Other</button>
+  </div>
+  <div class="row">
+    <select id="pick" aria-label="Choose a voyage"></select>
+    <button class="btn" id="rand" title="Pick a random voyage">Random</button>
+  </div>
+  <div class="voyage"><div class="name" id="vname"></div><div class="meta" id="vmeta"></div></div>
+  <div class="stats">
+    <div class="stat act"><div class="v" id="sact">&ndash;</div><div class="k">days, as logged</div></div>
+    <div class="stat clim"><div class="v" id="sclim">&ndash;</div><div class="k">days, wind-chart route</div></div>
+    <div class="stat opt"><div class="v" id="sopt">&ndash;</div><div class="k">days, hindsight route</div></div>
+  </div>
+  <div class="race">
+    <div class="row"><button class="btn" id="play">Play</button><input type="range" id="day" min="0" max="100" step="0.25" value="0" aria-label="Day of voyage"><span id="dlab">day 0</span></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--act)"></i>Logged track (CLIWOC logbook)</span>
+    <span><i class="dash"></i>Best route from 1836&ndash;1855 wind charts, sailed in the real winds</span>
+    <span><i style="background:var(--opt)"></i>Hindsight optimum through the real winds</span>
+  </div>
+  <p class="note" id="heronote">Click any faint track on the chart to pick that voyage. The showcase voyage also shows its isochrones: rings of how far the fastest ship could have got, every 2 days.</p>
+  <p class="credits">Winds: NOAA-CIRES-DOE 20th Century Reanalysis v3 (ensemble mean). Logbooks: CLIWOC 2.1. Coast: Natural Earth. All three ships use one fleet polar fitted to the logs, with a square-rigger's no-go zone (tacking at 67.5&deg;), and ghost routes stay north of 42&deg;S. Ghost times are put on each voyage's logged clock.</p>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const css = getComputedStyle(document.documentElement);
+const COL = { act: css.getPropertyValue("--act").trim(), opt: css.getPropertyValue("--opt").trim(), clim: css.getPropertyValue("--clim").trim(),
+  land: css.getPropertyValue("--land").trim(), coast: css.getPropertyValue("--coast").trim(), ink: css.getPropertyValue("--ink").trim() };
+const canvas = $("chart"), ctx = canvas.getContext("2d");
+let coast = [], voyages = [], hero = null, summary = null, route = "outbound", sel = null, day = 0, playing = false, hover = null;
+let view = { k: 1, x0: 0, y0: 0 }, W = 0, H = 0, dpr = 1, projCache = new Map();
+
+// Equal Earth projection centred on 30E
+const A1 = 1.340264, A2 = -0.081106, A3 = 0.000893, A4 = 0.003796, M = Math.sqrt(3) / 2, LON0 = 30;
+function ee(lon, lat) {
+  const l = (lon - LON0) * Math.PI / 180, p = lat * Math.PI / 180;
+  const t = Math.asin(M * Math.sin(p)), t2 = t * t, t6 = t2 * t2 * t2;
+  const x = l * Math.cos(t) / (M * (A1 + 3 * A2 * t2 + t6 * (7 * A3 + 9 * A4 * t2)));
+  const y = t * (A1 + A2 * t2 + t6 * (A3 + A4 * t2));
+  return [x, y];
+}
+function px(lon, lat) { const [x, y] = ee(lon, lat); return [view.x0 + x * view.k, view.y0 - y * view.k]; }
+
+function fit() {
+  dpr = window.devicePixelRatio || 1; W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const [xa] = ee(-48, 0), [xb] = ee(116, 0), [, yt] = ee(30, 60), [, yb] = ee(30, -50);
+  const mobile = W <= 640, left = mobile ? 8 : Math.min(400, W * 0.38), bottom = mobile ? H * 0.42 : 8;
+  const k = Math.min((W - left - 16) / (xb - xa), (H - bottom - 16) / (yt - yb));
+  view.k = k; view.x0 = left + ((W - left - 16) - k * (xb - xa)) / 2 - xa * k + 8;
+  view.y0 = 8 + ((H - bottom - 16) - k * (yt - yb)) / 2 + yt * k;
+  projCache.clear(); draw();
+}
+
+function proj(key, lats, lons) {
+  let p = projCache.get(key);
+  if (!p) { p = lats.map((la, i) => px(lons[i], la)); projCache.set(key, p); }
+  return p;
+}
+function stroke(pts, color, w, alpha, dash) {
+  if (pts.length < 2) return;
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+}
+function glow(pts, color, w, dash) { stroke(pts, color, w * 5, 0.07, dash); stroke(pts, color, w * 2.6, 0.14, dash); stroke(pts, color, w, 1, dash); }
+
+function upto(path, key, d) {
+  const [la, lo, t] = path, pts = proj(key, la, lo), out = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] <= d) { out.push(pts[i]); continue; }
+    if (i > 0) { const f = (d - t[i - 1]) / (t[i] - t[i - 1]); const a = pts[i - 1], b = pts[i]; out.push([a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1])]); }
+    break;
+  }
+  return out;
+}
+
+function draw() {
+  ctx.fillStyle = COL.ink; ctx.fillRect(0, 0, W, H);
+  // graticule
+  ctx.strokeStyle = "#1a212c"; ctx.lineWidth = 0.6;
+  for (let lat = -40; lat <= 60; lat += 20) { ctx.beginPath(); for (let lon = -50; lon <= 116; lon += 2) { const [x, y] = px(lon, lat); lon === -50 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke(); }
+  for (let lon = -40; lon <= 110; lon += 30) { ctx.beginPath(); for (let lat = -50; lat <= 60; lat += 2) { const [x, y] = px(lon, lat); lat === -50 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke(); }
+  const [ex0, ey] = px(-50, 0), [ex1] = px(116, 0);
+  ctx.setLineDash([2, 4]); ctx.strokeStyle = "#2c3644"; ctx.beginPath(); ctx.moveTo(ex0, ey); ctx.lineTo(ex1, ey); ctx.stroke(); ctx.setLineDash([]);
+  // land
+  ctx.fillStyle = COL.land; ctx.strokeStyle = COL.coast; ctx.lineWidth = 0.7;
+  coast.forEach((r, i) => { const pts = proj("c" + i, r[1], r[0]); ctx.beginPath(); pts.forEach((p, j) => j ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); ctx.stroke(); });
+  // all voyages of this type, faint
+  const list = voyages.filter((v) => v.route === route);
+  const base = sel ? 0.045 : 0.08;
+  list.forEach((v) => stroke(proj(v.id + "a", v.act[0], v.act[1]), COL.act, v === hover ? 1.4 : 0.6, v === hover ? 0.55 : base));
+  if (!sel) return;
+  // isochrones for the showcase voyage
+  if (hero && sel.id === hero.leg_id) {
+    hero.levels.forEach((lv) => {
+      if (lv.day > day) return;
+      const age = (day - lv.day), a = Math.max(0.18, 0.75 - age / 60), major = lv.day % 10 === 0;
+      lv.lines.forEach((ln, j) => stroke(proj("h" + lv.day + "_" + j, ln[0], ln[1]), major ? "#f2c14e" : "#3fb5a3", major ? 1.0 : 0.6, a));
+    });
+  }
+  // full routes faint, raced part bright
+  stroke(proj(sel.id + "c", sel.clim[0], sel.clim[1]), COL.clim, 1, 0.25, [5, 4]);
+  stroke(proj(sel.id + "o", sel.opt[0], sel.opt[1]), COL.opt, 1, 0.22);
+  stroke(proj(sel.id + "a", sel.act[0], sel.act[1]), COL.act, 1, 0.3);
+  glow(upto(sel.clim, sel.id + "c", day), COL.clim, 1.3, [5, 4]);
+  glow(upto(sel.opt, sel.id + "o", day), COL.opt, 1.5);
+  glow(upto(sel.act, sel.id + "a", day), COL.act, 1.7);
+  for (const [path, key, c] of [[sel.clim, sel.id + "c", COL.clim], [sel.opt, sel.id + "o", COL.opt], [sel.act, sel.id + "a", COL.act]]) {
+    const pts = upto(path, key, day); if (!pts.length) continue;
+    const [x, y] = pts[pts.length - 1];
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fillStyle = c; ctx.globalAlpha = 0.15; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 3.6, 0, 7); ctx.globalAlpha = 1; ctx.fill();
+    ctx.strokeStyle = COL.ink; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+
+function fmt(x) { return (Math.round(x * 10) / 10).toFixed(0); }
+function choose(v) {
+  sel = v; day = 0; playing = false; $("play").textContent = "Play";
+  const end = Math.max(...[v.act, v.opt, v.clim].map((p) => p[2][p[2].length - 1]));
+  $("day").max = Math.ceil(end); $("day").value = 0; $("dlab").textContent = "day 0";
+  $("vname").textContent = v.ship;
+  const d = new Date(v.t0 + "T00:00:00Z");
+  $("vmeta").textContent = `${v.frm} to ${v.to} · leg starts ${d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}`;
+  $("sact").textContent = fmt(v.days);
+  $("sclim").textContent = fmt(v.clim[2][v.clim[2].length - 1]);
+  $("sopt").textContent = fmt(v.opt[2][v.opt[2].length - 1]);
+  $("pick").value = v.id; draw();
+}
+function fillPick() {
+  const list = voyages.filter((v) => v.route === route).sort((a, b) => a.t0.localeCompare(b.t0));
+  $("pick").innerHTML = list.map((v) => `<option value="${v.id}">${v.t0.slice(0, 4)} · ${v.ship} (${fmt(v.days)} d)</option>`).join("");
+  const keep = list.find((v) => sel && v.id === sel.id);
+  const start = keep || (hero && list.find((v) => v.id === hero.leg_id)) || list[Math.floor(list.length / 2)];
+  if (start) choose(start);
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => {
+  route = b.dataset.r; document.querySelectorAll("#tabs button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); fillPick();
+}));
+$("pick").addEventListener("change", (e) => choose(voyages.find((v) => v.id === e.target.value)));
+$("rand").addEventListener("click", () => { const l = voyages.filter((v) => v.route === route); choose(l[Math.floor(Math.random() * l.length)]); });
+$("day").addEventListener("input", (e) => { day = +e.target.value; $("dlab").textContent = "day " + Math.floor(day); draw(); });
+$("play").addEventListener("click", () => {
+  playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
+  if (playing && day >= +$("day").max) day = 0;
+  let last = performance.now();
+  const tick = (now) => {
+    if (!playing) return;
+    day = Math.min(+$("day").max, day + (now - last) / 1000 * 9); last = now;
+    $("day").value = day; $("dlab").textContent = "day " + Math.floor(day); draw();
+    if (day >= +$("day").max) { playing = false; $("play").textContent = "Play"; return; }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+});
+$("toggle").addEventListener("click", () => { const p = $("panel"); const m = p.classList.toggle("min"); $("toggle").textContent = m ? "Show" : "Hide"; $("toggle").setAttribute("aria-expanded", String(!m)); });
+
+function nearest(mx, my) {
+  let best = null, bd = 14 * 14;
+  for (const v of voyages) {
+    if (v.route !== route) continue;
+    const pts = proj(v.id + "a", v.act[0], v.act[1]);
+    for (let i = 0; i < pts.length; i += 1) { const dx = pts[i][0] - mx, dy = pts[i][1] - my, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = v; } }
+  }
+  return best;
+}
+canvas.addEventListener("mousemove", (e) => { const h = nearest(e.offsetX, e.offsetY); if (h !== hover) { hover = h; canvas.style.cursor = h ? "pointer" : "crosshair"; draw(); } });
+canvas.addEventListener("click", (e) => { const h = nearest(e.offsetX, e.offsetY); if (h) choose(h); });
+window.addEventListener("resize", fit);
+
+Promise.all(["coast", "voyages", "hero", "summary"].map((n) => fetch(`data/${n}.json`).then((r) => r.json()))).then(([c, v, h, s]) => {
+  coast = c; voyages = v; hero = h; summary = s.summary;
+  const P = summary.models[summary.primary], Hm = summary.models["_hull_s42"], pct = (x) => ((x - 1) * 100).toFixed(0);
+  const ob = Hm.by_route.outbound;
+  $("finding").innerHTML = `Across <b>${summary.n_legs}</b> legs the logged route took a median <b>${pct(Hm.H2.median)}%</b> longer than the best route from wind charts alone (<b>${pct(P.H2.median)}%</b> with the pre-registered polar). On the outbound run that is about <b>${ob.days_lost_clim.toFixed(0)}</b> days a voyage. Knowing the real weather in hindsight adds only <b>${pct(Hm.R_weather.median)}%</b> more.`;
+  fit(); fillPick();
+});
+</script>
+</body>
+</html>

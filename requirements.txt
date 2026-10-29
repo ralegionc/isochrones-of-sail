@@ -1,0 +1,14 @@
+numpy
+scipy
+pandas
+xarray
+netCDF4
+numba
+matplotlib
+cartopy
+geopandas
+shapely
+pyshp
+pillow
+contourpy
+pytest
